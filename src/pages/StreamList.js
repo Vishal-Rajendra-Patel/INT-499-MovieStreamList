@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlusCircle, CheckCircle, Trash2, Edit2, Save } from 'lucide-react';
 
 function StreamList() {
     const [inputVal, setInputVal] = useState('');
-    const [items, setItems] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [editText, setEditText] = useState('');
+
+    // Load saved items from localStorage
+    const [items, setItems] = useState(() => {
+        const savedItems = localStorage.getItem('streamListItems');
+        return savedItems ? JSON.parse(savedItems) : [];
+    });
+
+    // Save items to localStorage whenever the list changes
+    useEffect(() => {
+        localStorage.setItem('streamListItems', JSON.stringify(items));
+    }, [items]);
 
     // Add new item to the list and clear input
     const handleAddItem = (e) => {
@@ -19,7 +29,7 @@ function StreamList() {
         };
 
         setItems([...items, newItem]);
-        setInputVal(''); // Requirement: Clear user input upon submit
+        setInputVal(''); // Clear user input upon submit
     };
 
     // Toggle complete state
@@ -56,7 +66,7 @@ function StreamList() {
     return (
         <div className="page-container">
             <h1>My Stream List</h1>
-            <p>Add movie or program ideas to your personal watch list.</p>
+            <p>Manage your custom streaming watchlist below.</p>
 
             <form onSubmit={handleAddItem} className="stream-form">
                 <input
@@ -71,7 +81,7 @@ function StreamList() {
                 </button>
             </form>
 
-            {/* Input List */}
+            {/* Display list of titles */}
             <div className="list-container">
                 {items.length === 0 ? (
                     <p className="empty-message">No movies or programs added yet.</p>
