@@ -1,5 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PlusCircle, CheckCircle, Trash2, Edit2, Save } from 'lucide-react';
+
+// Safely read & deserialize items from localStorage, guarding against SSR
+// (no window/localStorage), absent keys, and corrupt JSON payloads.
+function readItemsSafely() {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
+    try {
+        const saved = window.localStorage.getItem('streamListItems');
+        if (!saved) return [];
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        console.error('Failed to parse streamListItems from localStorage:', err);
+        return [];
+    }
+}
+
+// Safely persist items to localStorage, guarding against SSR / quota errors.
+function writeItemsSafely(items) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+        window.localStorage.setItem('streamListItems', JSON.stringify(items));
+    } catch (err) {
+        console.error('Failed to write streamListItems to localStorage:', err);
+    }
+}
 
 function StreamList() {
     const [inputVal, setInputVal] = useState('');
@@ -7,61 +32,71 @@ function StreamList() {
     const [editText, setEditText] = useState('');
 
     // Load saved items from localStorage
-    const [items, setItems] = useState(() => {
-        const savedItems = localStorage.getItem('streamListItems');
-        return savedItems ? JSON.parse(savedItems) : [];
-    });
+    const [items, setItems] = useState(readItemsSafely);
 
     // Save items to localStorage whenever the list changes
     useEffect(() => {
-        localStorage.setItem('streamListItems', JSON.stringify(items));
+        writeItemsSafely(items);
     }, [items]);
 
     // Add new item to the list and clear input
-    const handleAddItem = (e) => {
-        e.preventDefault();
-        if (!inputVal.trim()) return;
+    const handleAddItem = useCallback(
+        (e) => {
+            e.preventDefault();
+            const trimmed = inputVal.trim();
+            if (!trimmed) return;
 
-        const newItem = {
-            id: Date.now(),
-            text: inputVal,
-            completed: false,
-        };
+            const newItem = {
+                id: Date.now(),
+                text: trimmed,
+                completed: false,
+            };
 
-        setItems([...items, newItem]);
-        setInputVal(''); // Clear user input upon submit
-    };
+            // Functional update avoids stale-closure bugs if multiple
+            // events batch before a re-render flushes `items`.
+            setItems((prev) => [...prev, newItem]);
+            setInputVal(''); // Clear user input upon submit
+        },
+        [inputVal]
+    );
 
     // Toggle complete state
-    const handleToggleComplete = (id) => {
-        setItems(
-            items.map((item) =>
+    const handleToggleComplete = useCallback((id) => {
+        setItems((prev) =>
+            prev.map((item) =>
                 item.id === id ? { ...item, completed: !item.completed } : item
             )
         );
-    };
+    }, []);
 
     // Delete item from list
-    const handleDeleteItem = (id) => {
-        setItems(items.filter((item) => item.id !== id));
-    };
+    const handleDeleteItem = useCallback((id) => {
+        setItems((prev) => prev.filter((item) => item.id !== id));
+    }, []);
 
     // Start editing mode
-    const handleStartEdit = (item) => {
+    const handleStartEdit = useCallback((item) => {
         setEditingId(item.id);
         setEditText(item.text);
-    };
+    }, []);
 
     // Save edited text
-    const handleSaveEdit = (id) => {
-        setItems(
-            items.map((item) =>
-                item.id === id ? { ...item, text: editText } : item
-            )
-        );
-        setEditingId(null);
-        setEditText('');
-    };
+    const handleSaveEdit = useCallback(
+        (id) => {
+            const trimmed = editText.trim();
+            // Guard against saving an empty/whitespace-only edit.
+            if (!trimmed) return;
+
+            setItems((prev) =>
+                prev.map((item) =>
+                    item.id === id ? { ...item, text: trimmed } : item
+                )
+            );
+            setEditingId(null);
+            setEditText('');
+        },
+        [editText]
+    );
 
     return (
         <div className="page-container">
@@ -96,6 +131,7 @@ function StreamList() {
                                             type="text"
                                             value={editText}
                                             onChange={(e) => setEditText(e.target.value)}
+                                            aria-label="Edit title"
                                         />
                                         <button onClick={() => handleSaveEdit(item.id)} className="save-btn">
                                             <Save size={16} /> Save
